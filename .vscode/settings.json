@@ -1,0 +1,10 @@
+{
+	"clangd.arguments": [
+		"--header-insertion=never",
+		"--all-scopes-completion",
+		"--background-index",
+		"--suggest-missing-includes",
+		"--log=verbose",
+		"--compile-commands-dir=build/build/Release"
+	],
+}

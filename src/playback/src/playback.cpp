@@ -1,7 +1,3 @@
-//
-// Created by Konstantin Gredeskoul on 5/14/17.
-//
-
 #include "playback.h"
 #undef TRACY_HW_TIMER
 #include "tracy/Tracy.hpp"
@@ -37,14 +33,16 @@ struct Event {
 };
 
 struct EventStart : public Event {
-  std::string file;
-  std::string function;
+  std::string_view file;
+  std::string_view function;
   int line;
 };
 struct EventEnd : public Event {};
 
 struct Playback::P {
   std::vector<std::variant<EventStart, EventEnd>> stack;
+
+  std::vector<std::thread> playbackThreads;
 
   P() {
     stack.push_back(EventStart{{0, 1, 1}, "file1.cpp", "function1", 1});
@@ -85,7 +83,7 @@ void Playback::play() {
               {
                 TracyQueuePrepare(QueueType::ZoneBeginAllocSrcLoc);
                 auto srcLocation = Profiler::AllocSourceLocation(
-                    e.line, e.file.c_str(), e.file.size(), e.function.c_str(),
+                    e.line, e.file.data(), e.file.size(), e.function.data(),
                     e.function.size());
                 MemWrite(&item->zoneBegin.time,
                          uint64_t(originTime + e.time * nanosecondScale()));

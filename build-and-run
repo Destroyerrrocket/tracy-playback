@@ -2,10 +2,10 @@
 
 pushd ${0:a:h}
 
-cmake . -G "Ninja" --preset conan-release -DCMAKE_EXPORT_COMPILE_COMMANDS=ON &&
-  pushd build/build/Release &&
+cmake . -G "Ninja" --preset conan-debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON &&
+  pushd build/build/Debug &&
   ninja &&
-  ctest &&
+  ctest --output-on-failure &&
   popd
 
 popd

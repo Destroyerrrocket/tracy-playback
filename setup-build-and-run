@@ -2,9 +2,9 @@
 
 pushd ${0:a:h}
 
-conan install . --output-folder=build --build=missing &&
-  cmake . -G "Ninja" --preset conan-release -DCMAKE_EXPORT_COMPILE_COMMANDS=ON &&
-  pushd build/build/Release &&
+conan install . --output-folder=build --build=missing --settings=build_type=Debug &&
+  cmake . -G "Ninja" --preset conan-debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON &&
+  pushd build/build/Debug &&
   ninja &&
   ctest &&
   popd

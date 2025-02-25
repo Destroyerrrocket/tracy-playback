@@ -17,4 +17,4 @@ target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/in
 install(TARGETS ${PROJECT_NAME} LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR} PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
 find_package(Tracy)
-target_link_libraries(${PROJECT_NAME} PRIVATE Tracy::TracyClient)
+target_link_libraries(${PROJECT_NAME} PRIVATE Tracy::TracyClient tracy_recorder)

@@ -17,5 +17,5 @@ void zoneStart(uint32_t line, std::string_view file, std::string_view function,
                std::string_view name, uint32_t color);
 void zoneEnd();
 
-void message(std::string_view message);
+void message(std::string_view message, uint32_t color);
 } // namespace TracyRecorder

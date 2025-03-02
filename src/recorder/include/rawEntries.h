@@ -3,9 +3,7 @@
 #include <cstdint>
 #include <istream>
 #include <optional>
-#include <span>
 #include <string_view>
-#include <thread>
 #include <variant>
 #include <vector>
 
@@ -141,10 +139,11 @@ template <bool isOut>
 struct MessageEvent
     : public ThreadEvent<EventType::Message, MessageEvent<isOut>, isOut> {
   MessageEvent() = default;
-  MessageEvent(OutInString<isOut> message, uint64_t threadId, uint64_t time)
+  MessageEvent(OutInString<isOut> message, uint32_t color, uint64_t threadId,
+               uint64_t time)
       : ThreadEvent<EventType::Message, MessageEvent<isOut>, isOut>(threadId,
                                                                     time),
-        message{message} {}
+        message{message}, color{color} {}
   MessageEvent(MessageEvent &&) = default;
   MessageEvent(MessageEvent const &) = default;
   MessageEvent &operator=(MessageEvent const &) = default;
@@ -154,6 +153,7 @@ struct MessageEvent
   auto operator<=>(MessageEvent const &other) const = default;
 
   OutInString<isOut> message;
+  uint32_t color;
 };
 
 template <bool isOut>

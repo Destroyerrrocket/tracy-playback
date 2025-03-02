@@ -128,6 +128,7 @@ void EventHeader<EventType::Message, MessageEvent<true>, true>::serialize(
   serializeRaw(out, self.time);
   serializeRaw(out, self.threadId);
   serializeRaw(out, self.message);
+  serializeRaw(out, self.color);
 }
 
 template <>
@@ -138,6 +139,7 @@ EventHeader<EventType::Message, MessageEvent<false>, false>::deserialize(
   DESERIALIZE_RAW(event.time);
   DESERIALIZE_RAW(event.threadId);
   DESERIALIZE_RAW(event.message);
+  DESERIALIZE_RAW(event.color);
   return event;
 }
 

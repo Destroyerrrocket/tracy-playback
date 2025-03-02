@@ -2,13 +2,9 @@
 
 #include "rawEntries.h"
 #include "recorder.h"
+#include "utilities.h"
 
 using namespace std;
-
-template <class... Ts> struct overloads : Ts... {
-  using Ts::operator()...;
-};
-template <typename... Func> overloads(Func...) -> overloads<Func...>;
 
 namespace {
 std::string_view getHostName() {
@@ -139,11 +135,12 @@ TEST_F(RecorderTest, testZoneEndEvent) {
 }
 
 TEST_F(RecorderTest, testMessageEvent) {
-  TracyRecorder::message("message1");
+  TracyRecorder::message("message1", 1234);
   TracyRecorder::flush();
 
   testEvent({TracyRecorder::Event(TracyRecorder::MessageEvent<false>(
-      "message1", std::bit_cast<uint64_t>(std::this_thread::get_id()), 0))});
+      "message1", 1234, std::bit_cast<uint64_t>(std::this_thread::get_id()),
+      0))});
 }
 
 TEST_F(RecorderTest, testThreadNameEvent) {
@@ -157,19 +154,19 @@ TEST_F(RecorderTest, testThreadNameEvent) {
 TEST_F(RecorderTest, testMultipleEvents) {
   TracyRecorder::zoneStart(1, "file1.cpp", "function1", "name1", 0);
   TracyRecorder::zoneEnd();
-  TracyRecorder::message("message1");
+  TracyRecorder::message("message1", 1234);
   TracyRecorder::nameThread("thread1");
   TracyRecorder::flush();
 
-  testEvent(
-      {TracyRecorder::Event(TracyRecorder::StartZoneEvent<false>(
-           0, 1, "file1.cpp", "function1", "name1",
-           std::bit_cast<uint64_t>(std::this_thread::get_id()), 0)),
-       TracyRecorder::Event(TracyRecorder::EndZoneEvent<false>(
-           std::bit_cast<uint64_t>(std::this_thread::get_id()), 0)),
-       TracyRecorder::Event(TracyRecorder::MessageEvent<false>(
-           "message1", std::bit_cast<uint64_t>(std::this_thread::get_id()), 0)),
-       TracyRecorder::Event(TracyRecorder::ThreadNameEvent<false>(
-           "thread1", std::bit_cast<uint64_t>(std::this_thread::get_id()),
-           0))});
+  testEvent({TracyRecorder::Event(TracyRecorder::StartZoneEvent<false>(
+                 0, 1, "file1.cpp", "function1", "name1",
+                 std::bit_cast<uint64_t>(std::this_thread::get_id()), 0)),
+             TracyRecorder::Event(TracyRecorder::EndZoneEvent<false>(
+                 std::bit_cast<uint64_t>(std::this_thread::get_id()), 0)),
+             TracyRecorder::Event(TracyRecorder::MessageEvent<false>(
+                 "message1", 1234,
+                 std::bit_cast<uint64_t>(std::this_thread::get_id()), 0)),
+             TracyRecorder::Event(TracyRecorder::ThreadNameEvent<false>(
+                 "thread1", std::bit_cast<uint64_t>(std::this_thread::get_id()),
+                 0))});
 }

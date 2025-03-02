@@ -9,6 +9,7 @@ set(SOURCE_FILES
 set(HEADER_FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/include/rawEntries.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/recorder.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/utilities.h
 )
 
 add_library(${PROJECT_NAME} STATIC ${SOURCE_FILES} ${HEADER_FILES})

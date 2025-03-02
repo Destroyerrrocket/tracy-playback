@@ -3,7 +3,6 @@
 #include "rawEntries.h"
 
 #include <array>
-#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <mutex>
@@ -200,9 +199,9 @@ public:
             .count()));
   }
 
-  void message(std::string_view message) {
+  void message(std::string_view message, uint32_t color) {
     mData.push_back(TracyRecorder::MessageEvent<true>(
-        message, std::bit_cast<uint64_t>(std::this_thread::get_id()),
+        message, color, std::bit_cast<uint64_t>(std::this_thread::get_id()),
         std::chrono::duration_cast<std::chrono::nanoseconds>(
             std::chrono::high_resolution_clock::now() -
             globalReferenceClocks.referenceStart)
@@ -232,5 +231,7 @@ void zoneStart(uint32_t line, std::string_view file, std::string_view function,
 }
 void zoneEnd() { localRecorder.zoneEnd(); }
 
-void message(std::string_view message) { localRecorder.message(message); }
+void message(std::string_view message, uint32_t color) {
+  localRecorder.message(message, color);
+}
 } // namespace TracyRecorder

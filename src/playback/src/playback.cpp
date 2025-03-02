@@ -1,11 +1,18 @@
 #include "playback.h"
-#undef TRACY_HW_TIMER
-#include "tracy/Tracy.hpp"
 
-#include <filesystem>
+#include "eventStream.h"
+#include "playbackThread.h"
+#include "processInfo.h"
+
+#include "tracy/Tracy.hpp"
+#include "utilities.h"
+
+#include <format>
 #include <iostream>
 #include <memory>
+#include <queue>
 #include <string>
+#include <unordered_map>
 #include <variant>
 #include <vector>
 
@@ -21,86 +28,138 @@ long double nanosecondScale() {
 }
 } // namespace
 
-template <class... Ts> struct overloads : Ts... {
-  using Ts::operator()...;
-};
-template <typename... Func> overloads(Func...) -> overloads<Func...>;
-
-struct Event {
-  uint64_t time;
-  uint32_t threadId;
-  uint32_t processId;
-};
-
-struct EventStart : public Event {
-  std::string_view file;
-  std::string_view function;
-  int line;
-};
-struct EventEnd : public Event {};
+namespace TracyPlayback {
 
 struct Playback::P {
-  std::vector<std::variant<EventStart, EventEnd>> stack;
+  std::unordered_map<
+      std::string,
+      std::unordered_map<
+          uint64_t,
+          std::unordered_map<uint64_t, std::unique_ptr<PlaybackThread>>>>
+      playbackThreads;
 
-  std::vector<std::thread> playbackThreads;
+  using StreamWithInfo =
+      std::shared_ptr<std::pair<EventStream, ProcessInfo>>; // Could have been a
+                                                            // unique ptr
 
-  P() {
-    stack.push_back(EventStart{{0, 1, 1}, "file1.cpp", "function1", 1});
-    stack.push_back(
-        EventStart{{10000000 / 4, 1, 1}, "file1.cpp", "function1", 1});
-    stack.push_back(EventEnd{{10000000 / 4 * 3, 1}});
-    stack.push_back(EventEnd{{10000000, 1}});
-    stack.push_back(EventStart{{20000000, 2}, "file2.cpp", "function2", 2});
-    stack.push_back(EventEnd{{30000000, 2}});
+  struct CompareStreamWithInfo {
+    bool operator()(StreamWithInfo const &a, StreamWithInfo const &b) {
+      return a->first.getNanosecondsSincePosix() >
+             b->first.getNanosecondsSincePosix();
+    }
+  };
+
+  std::priority_queue<StreamWithInfo, std::vector<StreamWithInfo>,
+                      CompareStreamWithInfo>
+      eventStreams;
+
+  uint64_t minimumUnixTime = std::numeric_limits<uint64_t>::max();
+
+  P() = default;
+  ~P() = default;
+
+  void addStream(StreamInfo &&stream) {
+    EventStream events{std::move(stream)};
+    auto event = events.pop();
+    if (event.has_value()) {
+      if (auto startEvent =
+              std::get_if<TracyRecorder::StartEvent<false>>(&event->event)) {
+        minimumUnixTime = std::min(minimumUnixTime, startEvent->unixTime);
+        ProcessInfo processInfo{std::move(startEvent->host),
+                                startEvent->processId};
+
+        std::cout << std::format("Added stream from host '{}' PID '{}'",
+                                 processInfo.hostName, processInfo.processId)
+                  << std::endl;
+
+        eventStreams.emplace(
+            std::make_shared<std::pair<EventStream, ProcessInfo>>(
+                std::move(events), std::move(processInfo)));
+
+        return;
+      }
+    }
+
+    std::cout << std::format("FAILED to add stream") << std::endl;
   }
-  ~P() {}
+
+  PlaybackThread &getOrEmplace(ProcessInfo const &processInfo,
+                               uint64_t threadId) {
+    auto &processes = playbackThreads[processInfo.hostName];
+    auto &threads = processes[processInfo.processId];
+
+    auto it = threads.find(threadId);
+    if (it == threads.end()) {
+      it = threads
+               .try_emplace(threadId, std::make_unique<PlaybackThread>(
+                                          processInfo, threadId))
+               .first;
+    }
+    return *it->second;
+  }
 };
 
 Playback::Playback() : p(std::make_unique<P>()) {}
-Playback::~Playback() {}
+Playback::~Playback() = default;
 
-void Playback::addFile(const std::filesystem::path &file) {}
+void Playback::addStream(StreamInfo &&stream) {
+  p->addStream(std::move(stream));
+}
 
-void Playback::play() {
+void Playback::play(bool trace) {
   using namespace tracy;
   auto originTime = Profiler::GetTime();
 
   std::cout << "nanosecondScale: " << nanosecondScale() << std::endl;
   std::cout << "originTime: " << originTime << std::endl;
 
-  static constexpr tracy ::SourceLocationData __tracy_source_location71{
-      nullptr, __FUNCTION__,
-      "/home/pol/Documentos/tracy-playback/src/playback/src/playback.cpp",
-      (uint32_t)71, 0};
+  while (!p->eventStreams.empty()) {
+    auto eventStream = p->eventStreams.top();
+    p->eventStreams.pop();
 
-  std::chrono::duration startTime =
-      std::chrono::high_resolution_clock::now().time_since_epoch();
+    auto eventTime = eventStream->first.getNanosecondsSincePosix();
+    if (auto event = eventStream->first.pop(); event.has_value()) {
+      auto eventType = event->type();
 
-  for (const auto &event : p->stack) {
-    std::visit(
-        overloads{
-            [originTime, startTime](EventStart const &e) {
-              {
-                TracyQueuePrepare(QueueType::ZoneBeginAllocSrcLoc);
-                auto srcLocation = Profiler::AllocSourceLocation(
-                    e.line, e.file.data(), e.file.size(), e.function.data(),
-                    e.function.size());
-                MemWrite(&item->zoneBegin.time,
-                         uint64_t(originTime + e.time * nanosecondScale()));
-                MemWrite(&item->zoneBegin.srcloc, srcLocation);
-                TracyQueueCommit(zoneBeginThread);
-              }
-            },
-            [originTime, startTime](EventEnd const &e) {
-              {
-                TracyQueuePrepare(QueueType::ZoneEnd);
-                MemWrite(&item->zoneEnd.time,
-                         uint64_t(originTime + e.time * nanosecondScale()));
-                TracyQueueCommit(zoneEndThread);
-              }
-            },
-        },
-        event);
+      auto threadId = std::visit(
+          overloads{[](TracyRecorder::StartEvent<false> const &e) -> uint64_t {
+                      std::cout << "StartEvent in event stream is "
+                                   "unexpected. Start event "
+                                   "should only happen once at the start "
+                                   "of the stream"
+                                << std::endl;
+
+                      throw std::runtime_error("StartEvent in event stream is "
+                                               "unexpected. Start event "
+                                               "should only happen once at the "
+                                               "start of the stream");
+                    },
+                    [](auto const &e) -> uint64_t { return e.threadId; }},
+          event->event);
+
+      auto &thread = p->getOrEmplace(eventStream->second, threadId);
+      thread.submitEvent(
+          std::move(*event),
+          uint64_t(originTime +
+                   (eventTime - p->minimumUnixTime) * nanosecondScale()));
+
+      if (trace) {
+        std::cout << std::format(
+            "Event for host '{}' PID '{}' TID '{}' Event type {}\n",
+            eventStream->second.hostName, eventStream->second.processId,
+            threadId,
+            static_cast<std::underlying_type_t<TracyRecorder::EventType>>(
+                eventType));
+      }
+      if (!eventStream->first.peek().has_value()) {
+        std::cout << std::format(
+            "Host '{}' PID '{}' DONE!\n", eventStream->second.hostName,
+            eventStream->second.processId,
+            static_cast<std::underlying_type_t<TracyRecorder::EventType>>(
+                eventType));
+      }
+      p->eventStreams.push(eventStream);
+    }
   }
-  std::this_thread::sleep_for(std::chrono::seconds(1));
 }
+} // namespace TracyPlayback

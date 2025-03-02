@@ -3,6 +3,13 @@
 #include <fstream>
 #include <iostream>
 
+bool isPlaybackFile(std::ifstream &file) {
+  std::string_view header = "TRCYPLAY\1\0\0\0";
+  char magic[13] = {0};
+  file.read(magic, 12);
+  return file && std::string(magic, 12) == header;
+}
+
 int main(int argc, char **argv) {
   TracyPlayback::Playback playback;
 
@@ -16,6 +23,10 @@ int main(int argc, char **argv) {
     if (!*file) {
       std::cerr << "Failed to open file: " << path << std::endl;
       return 1;
+    }
+
+    if (!isPlaybackFile(*file)) { // Skip non-playback files
+      return 0;
     }
 
     std::cout << "Adding trace file: " << path << std::endl;
